@@ -1,9 +1,0 @@
-aws_region          = "us-east-1"
-instance_type       = "t2.micro"
-key_name            = "stack_devops_dev_kp"
-ami_id              = "ami-085386e29e44dacd7"
-vpc_id              = "vpc-0793a233be8e9bb26"
-security_group_id   = "sg-0dc66b0a42e0697da"
-instance_profile_name = "eng-ClixxRetailEC2RoleProfile" // Updated to match sm-pol-role-setup.sh
-instance_profile_arn  = "arn:aws:iam::924305315126:instance-profile/eng-ClixxRetailEC2RoleProfile" // Updated to match sm-pol-role-setup.sh
-launch_template_name  = "clixx-app-launch-template"
