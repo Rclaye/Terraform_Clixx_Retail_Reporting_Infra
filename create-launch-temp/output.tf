@@ -1,3 +1,4 @@
+# File : Clixx_Retail_Reporting/create-launch-temp/output.tf
 output "launch_template_id" {
   description = "ID of the launch template"
   value       = aws_launch_template.clixx_app.id

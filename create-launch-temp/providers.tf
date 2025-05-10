@@ -1,3 +1,4 @@
+# Outputs for the launch template
 terraform {
   required_providers {
     aws = {
