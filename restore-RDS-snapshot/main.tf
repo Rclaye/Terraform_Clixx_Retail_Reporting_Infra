@@ -1,3 +1,4 @@
+# main module for restoring an RDS snapshot
 resource "aws_db_instance" "restored" {
   identifier             = var.db_instance_identifier
   instance_class         = var.db_instance_class

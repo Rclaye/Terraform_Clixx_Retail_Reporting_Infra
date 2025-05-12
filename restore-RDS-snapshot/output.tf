@@ -1,3 +1,4 @@
+# Outputs for RDS snapshot restoration
 output "rds_endpoint" {
   description = "The endpoint of the restored RDS instance"
   value       = aws_db_instance.restored.endpoint
