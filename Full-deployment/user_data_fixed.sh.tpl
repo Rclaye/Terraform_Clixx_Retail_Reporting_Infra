@@ -236,7 +236,7 @@ if mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASSWORD" "$DB_NAME" -e "SELECT 1" &
     mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASSWORD" "$DB_NAME" <<EOF
 USE $DB_NAME;
 -- Update site URL 
-UPDATE wp_options SET option_value = "https://$LB_DNS_NAME" WHERE option_value LIKE '%ELB%';
+UPDATE wp_options SET option_value = "https://clixx.stack-claye.com" WHERE option_value LIKE '%ELB%';
 -- Print URLS 
 SELECT option_name, option_value FROM wp_options WHERE option_name LIKE '%http%';
 EOF
