@@ -67,22 +67,6 @@ pipeline {
             }
         }
 
-        stage('Verify Deployment') {
-            steps {
-                sh """
-                    cd ${TERRAFORM_DIR}
-                    # Get the load balancer DNS name from the state
-                    LB_DNS=\$(terraform output -raw lb_dns_name 2>/dev/null || echo "Load balancer DNS not available")
-                    echo "Clixx Retail Application is deployed to: http://\$LB_DNS"
-                """
-                slackSend(
-                    channel: '#stackjenkins',
-                    color: 'good',
-                    message: "Deployment verification complete. Job: ${env.JOB_NAME}, Build: #${env.BUILD_NUMBER}."
-                )
-            }
-        }
-
         stage('Approval to Destroy Infrastructure') {
             steps {
                 script {
