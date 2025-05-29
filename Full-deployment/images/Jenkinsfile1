@@ -30,7 +30,7 @@ pipeline {
                 )
                 sh """
                     cd ${TERRAFORM_DIR}
-                    terraform init -upgrade
+                    terraform init -migrate-state
                 """
             }
         }
@@ -57,7 +57,7 @@ pipeline {
                     slackSend(
                         channel: '#stackjenkins',
                         color: '36A64F_1',
-                        message: "Terraform apply started by ${env.RUNNER} on job ${env.JOB_NAME} [${env.BUILD_NUMBER}]."
+                        message: "Terraform apply started by ${env.RUNNER}'s on job ${env.JOB_NAME} [${env.BUILD_NUMBER}]."
                     )
                     sh """
                         cd ${TERRAFORM_DIR}
