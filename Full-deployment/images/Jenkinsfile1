@@ -1,0 +1,103 @@
+pipeline {
+    agent any
+
+    environment {
+        PATH = "${PATH}:${getTerraformPath()}"
+        VERSION = "1.0.${BUILD_NUMBER}"
+        AWS_REGION = "us-east-1"
+    }
+    
+    stages {
+        stage('Initial Stage') {
+            steps {
+                script {
+                    def userInput = input(id: 'confirm', message: 'Start Clixx Retail Deployment?', parameters: [
+                        [$class: 'BooleanParameterDefinition', defaultValue: false, description: 'Start Deployment', name: 'confirm']
+                    ])
+                }
+            }
+        }
+
+        stage('Terraform Init') {
+            steps {
+                slackSend (color: '#FFFF00', message: "STARTING CLIXX RETAIL TERRAFORM DEPLOYMENT: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})")
+                sh """
+                cd instances
+                terraform init -upgrade
+                """
+            }
+        }
+
+        stage('Terraform Plan') {
+            steps {
+                sh """
+                cd instances
+                terraform plan -out=tfplan -input=false
+                """
+            }
+        }
+
+        stage('Deploy Clixx Retail Application') {
+            steps {
+                slackSend (color: '#FFFF00', message: "STARTING CLIXX RETAIL APPLICATION DEPLOYMENT: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})")
+                sh """
+                cd instances
+                terraform apply -auto-approve
+                """
+            }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                sh """
+                cd instances
+                # Get the load balancer DNS name from the state
+                LB_DNS=\$(terraform output -raw lb_dns_name 2>/dev/null || echo "Load balancer DNS not available")
+                
+                # Display the application URL
+                echo "Clixx Retail Application is being deployed to: http://\$LB_DNS"
+                
+                # Optional: Add a simple check to verify the deployment
+                if [ ! -z "\$LB_DNS" ]; then
+                    # Wait for the application to become available (simple retry mechanism)
+                    MAX_RETRIES=10
+                    RETRY_COUNT=0
+                    HTTP_STATUS=0
+                    
+                    echo "Waiting for application to become available..."
+                    while [ \$RETRY_COUNT -lt \$MAX_RETRIES ] && [ \$HTTP_STATUS -ne 200 ]; do
+                        HTTP_STATUS=\$(curl -s -o /dev/null -w "%{http_code}" http://\$LB_DNS || echo 0)
+                        if [ \$HTTP_STATUS -eq 200 ]; then
+                            echo "Application is now available!"
+                            break
+                        fi
+                        RETRY_COUNT=\$((RETRY_COUNT+1))
+                        echo "Attempt \$RETRY_COUNT: Application not yet available, retrying in 30 seconds..."
+                        sleep 30
+                    done
+                    
+                    if [ \$HTTP_STATUS -ne 200 ]; then
+                        echo "Warning: Could not verify application availability. Further investigation may be needed."
+                    fi
+                fi
+                """
+                
+                slackSend (color: '#00FF00', message: "CLIXX RETAIL DEPLOYMENT COMPLETED: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})")
+            }
+        }
+    }
+    
+    post {
+        success {
+            slackSend (color: '#00FF00', message: "DEPLOYMENT SUCCESSFUL: Clixx Retail Application deployment completed successfully - Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})")
+        }
+        failure {
+            slackSend (color: '#FF0000', message: "DEPLOYMENT FAILED: Clixx Retail Application deployment failed - Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})")
+        }
+    }
+}
+
+def getTerraformPath() {
+    def tfHome = tool name: 'terraform-14', type: 'terraform'
+    return tfHome
+}
