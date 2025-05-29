@@ -298,7 +298,7 @@ resource "aws_instance" "bastion" {
     echo "Setting up bastion host..."
     # Update and install basic tools
     yum update -y
-    yum install -y amazon-ssm-agent
+    yum install -y amazon-ssm-agent aws-cli
     systemctl start amazon-ssm-agent
     systemctl enable amazon-ssm-agent
     
@@ -307,7 +307,35 @@ resource "aws_instance" "bastion" {
     chmod 700 /home/ec2-user/.ssh
     chown ec2-user:ec2-user /home/ec2-user/.ssh
     
-    # Create a script to help transfer keys
+    # Create a README file with instructions for key transfer
+    cat > /home/ec2-user/README_SSH_KEYS.txt << 'README'
+    =======================================================
+    SSH KEY TRANSFER INSTRUCTIONS
+    =======================================================
+    
+    Option 1: Use AWS Systems Manager Session Manager
+    -------------------------------------------------
+    1. Connect to this bastion host using AWS SSM Session Manager
+    2. Use the AWS CLI to transfer your key:
+       aws ssm start-session \
+         --target [INSTANCE-ID] \
+         --document-name AWS-StartPortForwardingSession \
+         --parameters "localPortNumber=8022,portNumber=22"
+       
+    3. In another terminal:
+       scp -P 8022 -i your-key.pem your-private-key.pem ec2-user@localhost:~/.ssh/private_key.pem
+    
+    Option 2: Transfer via SSM Document
+    ----------------------------------
+    1. Create an SSM parameter with your private key
+    2. Use AWS SSM Send-Command to copy from parameter store
+       
+    After transferring the key, run:
+       ./setup_keys.sh
+    
+    README
+    
+    # Create key setup script
     cat > /home/ec2-user/setup_keys.sh << 'SETUP'
     #!/bin/bash
     # This script is used to set proper permissions on transferred SSH keys
@@ -318,92 +346,17 @@ resource "aws_instance" "bastion" {
         echo "ssh -i ~/.ssh/private_key.pem ec2-user@PRIVATE_IP"
     else
         echo "Private key not found. Please transfer it first."
+        cat /home/ec2-user/README_SSH_KEYS.txt
     fi
     SETUP
     
     chmod +x /home/ec2-user/setup_keys.sh
     chown ec2-user:ec2-user /home/ec2-user/setup_keys.sh
+    chmod 644 /home/ec2-user/README_SSH_KEYS.txt
+    chown ec2-user:ec2-user /home/ec2-user/README_SSH_KEYS.txt
     
     echo "Bastion host setup complete!"
   EOF
-
-  # Wait for SSH to be ready and test connection before proceeding
-  provisioner "local-exec" {
-    command = <<EOT
-      echo "Waiting for bastion instance to be available..."
-      
-      # Wait for instance to be running
-      aws ec2 wait instance-running --instance-ids ${self.id} --region ${var.aws_region}
-      echo "Instance is running, now testing SSH connectivity..."
-      
-      # Test SSH connectivity with retry logic
-      SSH_READY=false
-      for i in {1..30}; do
-        echo "Testing SSH connection attempt $i/30..."
-        if ssh -i "${var.bastion_ssh_identity_file_local_path}" \
-               -o StrictHostKeyChecking=no \
-               -o UserKnownHostsFile=/dev/null \
-               -o ConnectTimeout=10 \
-               -o BatchMode=yes \
-               "ec2-user@${self.public_dns}" \
-               "echo 'SSH connection successful'" 2>/dev/null; then
-          echo "SSH is ready after $i attempts"
-          SSH_READY=true
-          break
-        fi
-        echo "SSH not ready yet, waiting 15 seconds..."
-        sleep 15
-      done
-      
-      if [ "$SSH_READY" = "false" ]; then
-        echo "ERROR: SSH never became available after 30 attempts"
-        exit 1
-      fi
-      
-      echo "SSH connectivity confirmed, proceeding with key transfer..."
-    EOT
-  }
-
-  # Copy private key only after SSH is confirmed working
-  provisioner "local-exec" {
-    command = <<EOT
-      echo "Starting private key transfer to bastion..."
-      
-      # Attempt SCP with retry logic
-      SCP_SUCCESS=false
-      for i in {1..5}; do
-        echo "SCP attempt $i/5..."
-        if scp -i "${var.bastion_ssh_identity_file_local_path}" \
-               -o StrictHostKeyChecking=no \
-               -o UserKnownHostsFile=/dev/null \
-               -o ConnectTimeout=30 \
-               -o BatchMode=yes \
-               "${var.private_instance_ssh_key_local_path}" \
-               "ec2-user@${self.public_dns}:/home/ec2-user/.ssh/${var.private_instance_ssh_key_destination_filename}"; then
-          echo "Private key copied successfully on attempt $i"
-          SCP_SUCCESS=true
-          break
-        fi
-        echo "SCP attempt $i failed, waiting 10 seconds before retry..."
-        sleep 10
-      done
-      
-      if [ "$SCP_SUCCESS" = "false" ]; then
-        echo "ERROR: SCP failed after 5 attempts"
-        exit 1
-      fi
-      
-      # Set proper permissions on the key file
-      ssh -i "${var.bastion_ssh_identity_file_local_path}" \
-          -o StrictHostKeyChecking=no \
-          -o UserKnownHostsFile=/dev/null \
-          "ec2-user@${self.public_dns}" \
-          "chmod 400 /home/ec2-user/.ssh/${var.private_instance_ssh_key_destination_filename}"
-      
-      echo "Private key transfer completed successfully"
-      echo "Private key permissions set to 400"
-    EOT
-  }
 
   tags = {
     Name        = "clixx-bastion-host"
