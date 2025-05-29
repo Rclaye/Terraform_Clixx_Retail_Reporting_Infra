@@ -5,6 +5,8 @@ pipeline {
         PATH = "${PATH}:${getTerraformPath()}"
         VERSION = "1.0.${BUILD_NUMBER}"
         AWS_REGION = "us-east-1"
+        // Define the directory containing Terraform files - using repository structure
+        TERRAFORM_DIR = "Full-deployment"
     }
     
     stages {
@@ -22,7 +24,21 @@ pipeline {
             steps {
                 slackSend (color: '#FFFF00', message: "STARTING CLIXX RETAIL TERRAFORM DEPLOYMENT: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})")
                 sh """
-                terraform init -upgrade
+                # List directory content for debugging
+                echo "Current directory: \$(pwd)"
+                ls -la
+                
+                # Check if Terraform directory exists
+                if [ -d "${TERRAFORM_DIR}" ]; then
+                    cd ${TERRAFORM_DIR}
+                    echo "Initializing Terraform in directory: \$(pwd)"
+                    terraform init -upgrade
+                else
+                    echo "ERROR: Terraform directory '${TERRAFORM_DIR}' not found!"
+                    echo "Current directory contents:"
+                    ls -la
+                    exit 1
+                fi
                 """
             }
         }
@@ -30,6 +46,8 @@ pipeline {
         stage('Terraform Plan') {
             steps {
                 sh """
+                cd ${TERRAFORM_DIR}
+                echo "Running Terraform plan in directory: \$(pwd)"
                 terraform plan -out=tfplan -input=false
                 """
             }
@@ -39,6 +57,8 @@ pipeline {
             steps {
                 slackSend (color: '#FFFF00', message: "STARTING CLIXX RETAIL APPLICATION DEPLOYMENT: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})")
                 sh """
+                cd ${TERRAFORM_DIR}
+                echo "Applying Terraform configuration in directory: \$(pwd)"
                 terraform apply -auto-approve
                 """
             }
@@ -47,6 +67,9 @@ pipeline {
         stage('Verify Deployment') {
             steps {
                 sh """
+                cd ${TERRAFORM_DIR}
+                echo "Verifying deployment in directory: \$(pwd)"
+                
                 # Get the load balancer DNS name from the state
                 LB_DNS=\$(terraform output -raw lb_dns_name 2>/dev/null || echo "Load balancer DNS not available")
                 
