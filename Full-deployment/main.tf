@@ -676,7 +676,6 @@ resource "aws_launch_template" "clixx_app" {
     aws_lb.clixx_alb,
     aws_efs_file_system.clixx_efs,
     aws_efs_mount_target.clixx_mount_target,
-    null_resource.wait_for_db_ready        # ← ensure Terraform waits for RDS availability
   ]
 }
 
@@ -840,16 +839,4 @@ resource "aws_efs_mount_target" "clixx_mount_target" {
     aws_security_group.efs_sg,
     aws_efs_file_system.clixx_efs
   ]
-}
-
-resource "null_resource" "wait_for_db_ready" {
-  triggers = {
-    db_instance_id = aws_db_instance.clixx_db.id
-  }
-
-  provisioner "local-exec" {
-    command = "aws rds wait db-instance-available --db-instance-identifier ${self.triggers.db_instance_id} --region ${var.aws_region}"
-  }
-
-  depends_on = [aws_db_instance.clixx_db]
 }
