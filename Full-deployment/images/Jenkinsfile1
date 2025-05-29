@@ -47,7 +47,7 @@ pipeline {
 
         stage('Terraform Plan') {
             steps {
-                withCredentials([file(credentialsId: 'clixx-tfvars', variable: 'TFVARS_FILE')]) {
+                withCredentials([file(credentialsId: 'clixxx-tfvars', variable: 'TFVARS_FILE')]) {
                     sh """
                     cd ${TERRAFORM_DIR}
                     echo "Running Terraform plan in directory: \$(pwd)"
@@ -69,7 +69,7 @@ pipeline {
 
         stage('Deploy Clixx Retail Application') {
             steps {
-                withCredentials([file(credentialsId: 'clixx-tfvars', variable: 'TFVARS_FILE')]) {
+                withCredentials([file(credentialsId: 'clixxx-tfvars', variable: 'TFVARS_FILE')]) {
                     slackSend (color: '#FFFF00', message: "STARTING CLIXX RETAIL APPLICATION DEPLOYMENT: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})")
                     sh """
                     cd ${TERRAFORM_DIR}
