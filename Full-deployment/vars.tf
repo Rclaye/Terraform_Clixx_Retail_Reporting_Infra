@@ -221,3 +221,15 @@ variable "create_debug_instance" {
   #description = "ID of the EFS file system"
  # type        = string
 #}
+
+# Cross-account access variables
+variable "target_account_id" {
+  description = "The AWS Account ID to assume the role into"
+  type        = string
+}
+
+variable "target_role_name" {
+  description = "Name of the IAM role to assume in the target account"
+  type        = string
+  default     = "Engineer"
+}

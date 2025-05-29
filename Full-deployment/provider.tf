@@ -10,4 +10,9 @@ terraform {
 
 provider "aws" {
   region = var.aws_region
+
+  assume_role {
+    role_arn     = "arn:aws:iam::${var.target_account_id}:role/${var.target_role_name}"
+    session_name = "TerraformSession"
+  }
 }
