@@ -22,7 +22,6 @@ pipeline {
             steps {
                 slackSend (color: '#FFFF00', message: "STARTING CLIXX RETAIL TERRAFORM DEPLOYMENT: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})")
                 sh """
-                cd instances
                 terraform init -upgrade
                 """
             }
@@ -31,7 +30,6 @@ pipeline {
         stage('Terraform Plan') {
             steps {
                 sh """
-                cd instances
                 terraform plan -out=tfplan -input=false
                 """
             }
@@ -41,7 +39,6 @@ pipeline {
             steps {
                 slackSend (color: '#FFFF00', message: "STARTING CLIXX RETAIL APPLICATION DEPLOYMENT: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})")
                 sh """
-                cd instances
                 terraform apply -auto-approve
                 """
             }
@@ -50,7 +47,6 @@ pipeline {
         stage('Verify Deployment') {
             steps {
                 sh """
-                cd instances
                 # Get the load balancer DNS name from the state
                 LB_DNS=\$(terraform output -raw lb_dns_name 2>/dev/null || echo "Load balancer DNS not available")
                 
