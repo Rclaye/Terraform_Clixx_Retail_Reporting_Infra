@@ -32,6 +32,8 @@ pipeline {
                 if [ -d "${TERRAFORM_DIR}" ]; then
                     cd ${TERRAFORM_DIR}
                     echo "Initializing Terraform in directory: \$(pwd)"
+                    echo "Contents of Terraform directory:"
+                    ls -la
                     terraform init -upgrade
                 else
                     echo "ERROR: Terraform directory '${TERRAFORM_DIR}' not found!"
@@ -45,22 +47,36 @@ pipeline {
 
         stage('Terraform Plan') {
             steps {
-                sh """
-                cd ${TERRAFORM_DIR}
-                echo "Running Terraform plan in directory: \$(pwd)"
-                terraform plan -out=tfplan -input=false
-                """
+                withCredentials([file(credentialsId: 'clixx-tfvars', variable: 'TFVARS_FILE')]) {
+                    sh """
+                    cd ${TERRAFORM_DIR}
+                    echo "Running Terraform plan in directory: \$(pwd)"
+                    echo "Using tfvars file: \$TFVARS_FILE"
+                    
+                    # Check if tfvars file exists and show its content (masked)
+                    if [ -f "\$TFVARS_FILE" ]; then
+                        echo "Tfvars file found, size: \$(wc -l < \$TFVARS_FILE) lines"
+                    else
+                        echo "ERROR: Tfvars file not found at \$TFVARS_FILE"
+                        exit 1
+                    fi
+                    
+                    terraform plan -var-file="\$TFVARS_FILE" -out=tfplan -input=false
+                    """
+                }
             }
         }
 
         stage('Deploy Clixx Retail Application') {
             steps {
-                slackSend (color: '#FFFF00', message: "STARTING CLIXX RETAIL APPLICATION DEPLOYMENT: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})")
-                sh """
-                cd ${TERRAFORM_DIR}
-                echo "Applying Terraform configuration in directory: \$(pwd)"
-                terraform apply -auto-approve
-                """
+                withCredentials([file(credentialsId: 'clixx-tfvars', variable: 'TFVARS_FILE')]) {
+                    slackSend (color: '#FFFF00', message: "STARTING CLIXX RETAIL APPLICATION DEPLOYMENT: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})")
+                    sh """
+                    cd ${TERRAFORM_DIR}
+                    echo "Applying Terraform configuration in directory: \$(pwd)"
+                    terraform apply -var-file="\$TFVARS_FILE" -input=false tfplan
+                    """
+                }
             }
         }
 
