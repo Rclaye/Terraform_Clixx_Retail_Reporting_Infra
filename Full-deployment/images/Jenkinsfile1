@@ -25,11 +25,12 @@ pipeline {
             steps {
                 slackSend(
                     channel: '#stackjenkins',
-                    color: 'FFFF00_1',
-                    message: """🌱 Terraform Init Started
-👤 User: RCLAYE
-🚀 Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
-🔗 <${env.BUILD_URL}|View Job>"""
+                    color: '#3498DB',
+                    message: """⚙️ *TERRAFORM INIT* ⚙️
+▶️ Status: *hi michael it's richard*
+👨‍💻 Engineer: *RCLAYE*
+📋 Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
+🕐 Time: ${new Date().format("HH:mm:ss")}"""
                 )
                 sh """
                     cd ${TERRAFORM_DIR}
@@ -43,11 +44,12 @@ pipeline {
                 withCredentials([file(credentialsId: 'clixxx-tfvars', variable: 'TFVARS_FILE')]) {
                     slackSend(
                         channel: '#stackjenkins',
-                        color: 'FFFF00_1',
-                        message: """🧠 Terraform Plan Started
-👤 User: RCLAYE
-🚀 Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
-🔗 <${env.BUILD_URL}|View Job>"""
+                        color: '#F39C12',
+                        message: """📝 *TERRAFORM PLAN* 📝
+▶️ Status: *Started*
+👨‍💻 Engineer: *RCLAYE*
+📋 Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
+🕐 Time: ${new Date().format("HH:mm:ss")}"""
                     )
                     sh """
                         cd ${TERRAFORM_DIR}
@@ -62,11 +64,12 @@ pipeline {
                 withCredentials([file(credentialsId: 'clixxx-tfvars', variable: 'TFVARS_FILE')]) {
                     slackSend(
                         channel: '#stackjenkins',
-                        color: '36A64F_1',
-                        message: """🚀 Terraform Apply Started
-👤 User: RCLAYE
-🚀 Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
-🔗 <${env.BUILD_URL}|View Job>"""
+                        color: '#2ECC71',
+                        message: """🚀 *TERRAFORM APPLY* 🚀
+▶️ Status: *Started*
+👨‍💻 Engineer: *RCLAYE*
+📋 Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
+🕐 Time: ${new Date().format("HH:mm:ss")}"""
                     )
                     sh """
                         cd ${TERRAFORM_DIR}
@@ -95,11 +98,13 @@ pipeline {
                 withCredentials([file(credentialsId: 'clixxx-tfvars', variable: 'TFVARS_FILE')]) {
                     slackSend(
                         channel: '#stackjenkins',
-                        color: 'FF0000_1',
-                        message: """🧨 Terraform Destroy Started
-👤 User: RCLAYE
-🚀 Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
-🔗 <${env.BUILD_URL}|View Job>"""
+                        color: '#E74C3C',
+                        message: """💥 *TERRAFORM DESTROY* 💥
+▶️ Status: *Started*
+👨‍💻 Engineer: *RCLAYE*
+📋 Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
+🕐 Time: ${new Date().format("HH:mm:ss")}
+⚠️ *Removing Infrastructure* ⚠️"""
                     )
                     sh """
                         cd ${TERRAFORM_DIR}
@@ -114,22 +119,25 @@ pipeline {
         success {
             slackSend(
                 channel: '#stackjenkins',
-                color: 'good',
-                message: """✅ Terraform deployment completed successfully
-👤 User: RCLAYE
-🚀 Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
-🔗 <${env.BUILD_URL}|View Job>"""
+                color: '#2ECC71',
+                message: """✅ *TERRAFORM SUCCESS* ✅
+👨‍💻 Engineer: *RCLAYE*
+📋 Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
+🕐 Time: ${new Date().format("HH:mm:ss")}
+🏁 Status: *Completed Successfully*"""
             )
             echo "Deployment successful."
         }
         failure {
             slackSend(
                 channel: '#stackjenkins',
-                color: 'danger',
-                message: """❌ Terraform deployment failed
-👤 User: RCLAYE
-🚀 Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
-🔗 <${env.BUILD_URL}|View Job>"""
+                color: '#E74C3C',
+                message: """❌ *TERRAFORM FAILURE* ❌
+👨‍💻 Engineer: *RCLAYE*
+📋 Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
+🕐 Time: ${new Date().format("HH:mm:ss")}
+⚠️ Status: *Failed*
+🛠️ *Check logs for details*"""
             )
             echo "Deployment failed. Check logs."
         }
@@ -138,14 +146,22 @@ pipeline {
                 if (currentBuild.currentResult == 'SUCCESS' && env.STAGE_NAME == 'Terraform Destroy') {
                     slackSend(
                         channel: '#stackjenkins',
-                        color: 'good',
-                        message: "Terraform destroy completed successfully. Job: ${env.JOB_NAME}, Build: #${env.BUILD_NUMBER}."
+                        color: '#9B59B6',
+                        message: """🗑️ *TERRAFORM DESTROY SUCCESS* 🗑️
+👨‍💻 Engineer: *RCLAYE*
+📋 Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
+🕐 Time: ${new Date().format("HH:mm:ss")}
+🏁 Status: *Infrastructure Removed*"""
                     )
                 } else if (currentBuild.currentResult == 'FAILURE' && env.STAGE_NAME == 'Terraform Destroy') {
                     slackSend(
                         channel: '#stackjenkins',
-                        color: 'danger',
-                        message: "Terraform destroy failed. Job: ${env.JOB_NAME}, Build: #${env.BUILD_NUMBER}."
+                        color: '#C0392B',
+                        message: """⛔ *TERRAFORM DESTROY FAILED* ⛔
+👨‍💻 Engineer: *RCLAYE*
+📋 Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
+🕐 Time: ${new Date().format("HH:mm:ss")}
+⚠️ Status: *Failed to remove infrastructure*"""
                     )
                 }
             }
