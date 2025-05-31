@@ -1,94 +1,155 @@
 pipeline {
     agent any
-//  parameters {
-//   credentials credentialType: 'com.cloudbees.jenkins.plugins.awscredentials.AWSCredentialsImpl', defaultValue: 'AWS_CREDS_AUTOMATION_ACCT', name: 'AWS_AUTOMATION_ACCOUNT_CRED', required: false
-// }
 
     environment {
         PATH = "${PATH}:${getTerraformPath()}"
-        AMI_ID="stack-ami-${BUILD_NUMBER}"
-        VERSION = "1.0.${BUILD_NUMBER}"
     }
-    stages{
 
-         stage('Initial Stage') {
-              steps {
+    stages {
+        stage('Approval to Launch Pipeline') {
+            steps {
                 script {
-                def userInput = input(id: 'confirm', message: 'Start Pipeline?', parameters: [ [$class: 'BooleanParameterDefinition', defaultValue: false, description: 'Start Pipeline', name: 'confirm'] ])
-             }
-           }
+                    input(
+                        id: 'start_confirm',
+                        message: 'Ready to Launch the Pipeline?',
+                        parameters: [
+                            [$class: 'BooleanParameterDefinition', defaultValue: false, description: 'Start the Pipeline?', name: 'confirm']
+                        ]
+                    )
+                }
+            }
         }
 
-        stage('Packer AMI Build'){
-             steps {
-                 slackSend (color: '#FFFF01', message: "STARTING ${env.RUNNER}'s PACKER IMAGE BUILD: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})")
-                 sh '''
-                 cd images
-                 sed -i "s/ami-stack-'[0-9]*$'/'${AMI_ID}'/" ./image.pkr.hcl 
-                 export PACKER_LOG=1
-                 export PACKER_LOG_PATH=$WORKSPACE/packer.log
-                 /usr/bin/packer plugin install github.com/hashicorp/amazon
-                 /usr/bin/packer build -force image.pkr.hcl 
-                 '''
-               
-         }
-         }
+        stage('Terraform Format Check') {
+            steps {
+                slackSend(
+                    channel: '#stackjenkins',
+                    color: 'FFFF00_1',
+                    message: "Running 'terraform fmt -check' to ensure proper formatting."
+                )
+                sh "terraform fmt -check"
+            }
+        }
 
-        stage('Terraform init'){
-             steps {
-                 slackSend (color: '#FFFF00', message: "STARTING ${env.RUNNER}'s TERRAFORM DEPLOYMENT: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})")
-                 sh """
-                 cd instances
-                 terraform init -upgrade 
-                 """                  
-         }
-         }
+        stage('Terraform Validate') {
+            steps {
+                slackSend(
+                    channel: '#stackjenkins',
+                    color: 'FFFF00_1',
+                    message: "Running 'terraform validate' to ensure configuration is valid."
+                )
+                sh "terraform validate"
+            }
+        }
 
-        stage('Terraform Plan'){
-             steps {
-                 sh """
-                 cd instances
-                 terraform plan -out=tfplan -input=false
-                 """                          
-         }
-         }
+        stage('Terraform Init') {
+            steps {
+                withCredentials([file(credentialsId: 'clixx-tfvars', variable: 'TFVARS_FILE')]) {
+                    slackSend(
+                        channel: '#stackjenkins',
+                        color: 'FFFF00_1',
+                        message: "Terraform init started by ${env.RUNNER} on job ${env.JOB_NAME} [${env.BUILD_NUMBER}]."
+                    )
+                    sh """
+                        terraform init
+                    """
+                }
+            }
+        }
 
-        stage('Build Instance and Vulnerability Scan'){
-             steps {
-                 slackSend (color: '#FFFF00', message: "STARTING ${env.RUNNER}'s INFRASTRUCTURE BUILD AND VULNERABILITY SCAN: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})")
-                 sh """
-                 cd instances
-                 terraform apply -auto-approve
-                 """                          
-         }
-         }
+        stage('Terraform Plan') {
+            steps {
+                withCredentials([file(credentialsId: 'clixx-tfvars', variable: 'TFVARS_FILE')]) {
+                    slackSend(
+                        channel: '#stackjenkins',
+                        color: 'FFFF00_1',
+                        message: "Terraform plan started by ${env.RUNNER} on job ${env.JOB_NAME} [${env.BUILD_NUMBER}]."
+                    )
+                    sh """
+                        terraform plan -var-file="$TFVARS_FILE" -out=tfplan -input=false
+                    """
+                }
+            }
+        }
 
-          stage('Build Vulnerability Report'){
-             steps {
-                 sh """
-                 cd instances
-                 aws inspector start-assessment-run --assessment-run-name Hardeningrun_'${VERSION}' --assessment-template-arn "arn:aws:inspector:us-east-2:436083576863:target/0-E4xPwjpC/template/0-FSAUA0IZ" --region us-east-2
-                 """  
-                 slackSend (color: '#FFFF00', message: "ENDING ${env.RUNNER}'s DEPLOYMENT: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})")                        
-         }
-         }
+        stage('Terraform Apply') {
+            steps {
+                withCredentials([file(credentialsId: 'clixx-tfvars', variable: 'TFVARS_FILE')]) {
+                    slackSend(
+                        channel: '#stackjenkins',
+                        color: '36A64F_1',
+                        message: "Terraform apply started by ${env.RUNNER} on job ${env.JOB_NAME} [${env.BUILD_NUMBER}]."
+                    )
+                    sh """
+                        terraform apply -var-file="$TFVARS_FILE" -input=false tfplan
+                    """
+                }
+            }
+        }
 
+        stage('Approval to Destroy Infrastructure') {
+            steps {
+                script {
+                    input(
+                        id: 'destroy_confirm',
+                        message: 'Do you want to destroy this environment?',
+                        parameters: [
+                            [$class: 'BooleanParameterDefinition', defaultValue: false, description: 'Run terraform destroy?', name: 'confirm']
+                        ]
+                    )
+                }
+            }
+        }
 
-       
-        
+        stage('Terraform Destroy') {
+            steps {
+                slackSend(
+                    channel: '#stackjenkins',
+                    color: 'FF0000_1',
+                    message: "Terraform destroy started on job ${env.JOB_NAME} [${env.BUILD_NUMBER}]."
+                )
+                sh "terraform destroy -auto-approve"
+            }
+        }
+    }
+
+    post {
+        success {
+            slackSend(
+                channel: '#stackjenkins',
+                color: 'good',
+                message: "Terraform deployment completed successfully. Job: ${env.JOB_NAME}, Build: #${env.BUILD_NUMBER}."
+            )
+            echo "Deployment successful."
+        }
+        failure {
+            slackSend(
+                channel: '#stackjenkins',
+                color: 'danger',
+                message: "Terraform deployment failed. Job: ${env.JOB_NAME}, Build: #${env.BUILD_NUMBER}. Check logs for details."
+            )
+            echo "Deployment failed. Check logs."
+        }
+        always {
+            script {
+                if (currentBuild.currentResult == 'SUCCESS' && env.STAGE_NAME == 'Terraform Destroy') {
+                    slackSend(
+                        channel: '#stackjenkins',
+                        color: 'good',
+                        message: "Terraform destroy completed successfully. Job: ${env.JOB_NAME}, Build: #${env.BUILD_NUMBER}."
+                    )
+                } else if (currentBuild.currentResult == 'FAILURE' && env.STAGE_NAME == 'Terraform Destroy') {
+                    slackSend(
+                        channel: '#stackjenkins',
+                        color: 'danger',
+                        message: "Terraform destroy failed. Job: ${env.JOB_NAME}, Build: #${env.BUILD_NUMBER}."
+                    )
+                }
+            }
+        }
     }
 }
 
- def getTerraformPath(){
-        def tfHome= tool name: 'terraform-14', type: 'terraform'
-        return tfHome
-    }
-
-//  def getAnsiblePath(){
-//         def AnsibleHome= tool name: 'Ansible', type: 'org.jenkinsci.plugins.ansible.AnsibleInstallation'
-//         return AnsibleHome
-//     }
-
-// def getPackerPath(){
-//        def PackerHome= tool name: 'Packer', type: 'biz.neustar.jenkins.plugins.packer.PackerInstallation'
-//     }
+def getTerraformPath() {
+    return tool(name: 'terraform-14', type: 'terraform')
+}

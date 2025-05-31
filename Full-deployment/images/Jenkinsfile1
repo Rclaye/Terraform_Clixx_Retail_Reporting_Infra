@@ -26,7 +26,10 @@ pipeline {
                 slackSend(
                     channel: '#stackjenkins',
                     color: 'FFFF00_1',
-                    message: "Terraform init started by ${env.RUNNER} on job ${env.JOB_NAME} [${env.BUILD_NUMBER}]."
+                    message: """🌱 Terraform Init Started
+👤 User: RCLAYE
+🚀 Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
+🔗 <${env.BUILD_URL}|View Job>"""
                 )
                 sh """
                     cd ${TERRAFORM_DIR}
@@ -41,7 +44,10 @@ pipeline {
                     slackSend(
                         channel: '#stackjenkins',
                         color: 'FFFF00_1',
-                        message: "Terraform plan started by ${env.RUNNER} on job ${env.JOB_NAME} [${env.BUILD_NUMBER}]."
+                        message: """🧠 Terraform Plan Started
+👤 User: RCLAYE
+🚀 Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
+🔗 <${env.BUILD_URL}|View Job>"""
                     )
                     sh """
                         cd ${TERRAFORM_DIR}
@@ -57,7 +63,10 @@ pipeline {
                     slackSend(
                         channel: '#stackjenkins',
                         color: '36A64F_1',
-                        message: "Terraform apply started by ${env.RUNNER}'s on job ${env.JOB_NAME} [${env.BUILD_NUMBER}]."
+                        message: """🚀 Terraform Apply Started
+👤 User: RCLAYE
+🚀 Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
+🔗 <${env.BUILD_URL}|View Job>"""
                     )
                     sh """
                         cd ${TERRAFORM_DIR}
@@ -87,7 +96,10 @@ pipeline {
                     slackSend(
                         channel: '#stackjenkins',
                         color: 'FF0000_1',
-                        message: "Terraform destroy started on job ${env.JOB_NAME} [${env.BUILD_NUMBER}]."
+                        message: """🧨 Terraform Destroy Started
+👤 User: RCLAYE
+🚀 Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
+🔗 <${env.BUILD_URL}|View Job>"""
                     )
                     sh """
                         cd ${TERRAFORM_DIR}
@@ -103,7 +115,10 @@ pipeline {
             slackSend(
                 channel: '#stackjenkins',
                 color: 'good',
-                message: "Terraform deployment completed successfully. Job: ${env.JOB_NAME}, Build: #${env.BUILD_NUMBER}."
+                message: """✅ Terraform deployment completed successfully
+👤 User: RCLAYE
+🚀 Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
+🔗 <${env.BUILD_URL}|View Job>"""
             )
             echo "Deployment successful."
         }
@@ -111,7 +126,10 @@ pipeline {
             slackSend(
                 channel: '#stackjenkins',
                 color: 'danger',
-                message: "Terraform deployment failed. Job: ${env.JOB_NAME}, Build: #${env.BUILD_NUMBER}. Check logs for details."
+                message: """❌ Terraform deployment failed
+👤 User: RCLAYE
+🚀 Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
+🔗 <${env.BUILD_URL}|View Job>"""
             )
             echo "Deployment failed. Check logs."
         }
