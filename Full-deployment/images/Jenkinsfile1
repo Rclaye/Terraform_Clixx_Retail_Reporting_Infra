@@ -27,8 +27,8 @@ pipeline {
                     channel: '#stackjenkins',
                     color: '#3498DB',
                     message: """⚙️ *TERRAFORM INIT* ⚙️
-▶️ Status: *hi michael it's richard*
-👨‍💻 Engineer: *RCLAYE*
+▶️ Status: *Started*
+👨‍💻 Engineer: *RichardC*
 📋 Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
 🕐 Time: ${new Date().format("HH:mm:ss")}"""
                 )
@@ -47,7 +47,7 @@ pipeline {
                         color: '#F39C12',
                         message: """📝 *TERRAFORM PLAN* 📝
 ▶️ Status: *Started*
-👨‍💻 Engineer: *RCLAYE*
+👨‍💻 Engineer: *RichardC*
 📋 Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
 🕐 Time: ${new Date().format("HH:mm:ss")}"""
                     )
@@ -67,7 +67,7 @@ pipeline {
                         color: '#2ECC71',
                         message: """🚀 *TERRAFORM APPLY* 🚀
 ▶️ Status: *Started*
-👨‍💻 Engineer: *RCLAYE*
+👨‍💻 Engineer: *RichardC*
 📋 Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
 🕐 Time: ${new Date().format("HH:mm:ss")}"""
                     )
@@ -101,7 +101,7 @@ pipeline {
                         color: '#E74C3C',
                         message: """💥 *TERRAFORM DESTROY* 💥
 ▶️ Status: *Started*
-👨‍💻 Engineer: *RCLAYE*
+👨‍💻 Engineer: *RichardC*
 📋 Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
 🕐 Time: ${new Date().format("HH:mm:ss")}
 ⚠️ *Removing Infrastructure* ⚠️"""
@@ -121,7 +121,7 @@ pipeline {
                 channel: '#stackjenkins',
                 color: '#2ECC71',
                 message: """✅ *TERRAFORM SUCCESS* ✅
-👨‍💻 Engineer: *RCLAYE*
+👨‍💻 Engineer: *RichardC*
 📋 Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
 🕐 Time: ${new Date().format("HH:mm:ss")}
 🏁 Status: *Completed Successfully*"""
@@ -133,7 +133,7 @@ pipeline {
                 channel: '#stackjenkins',
                 color: '#E74C3C',
                 message: """❌ *TERRAFORM FAILURE* ❌
-👨‍💻 Engineer: *RCLAYE*
+👨‍💻 Engineer: *RichardC*
 📋 Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
 🕐 Time: ${new Date().format("HH:mm:ss")}
 ⚠️ Status: *Failed*
@@ -148,7 +148,7 @@ pipeline {
                         channel: '#stackjenkins',
                         color: '#9B59B6',
                         message: """🗑️ *TERRAFORM DESTROY SUCCESS* 🗑️
-👨‍💻 Engineer: *RCLAYE*
+👨‍💻 Engineer: *RichardC*
 📋 Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
 🕐 Time: ${new Date().format("HH:mm:ss")}
 🏁 Status: *Infrastructure Removed*"""
@@ -158,7 +158,7 @@ pipeline {
                         channel: '#stackjenkins',
                         color: '#C0392B',
                         message: """⛔ *TERRAFORM DESTROY FAILED* ⛔
-👨‍💻 Engineer: *RCLAYE*
+👨‍💻 Engineer: *RichardC*
 📋 Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
 🕐 Time: ${new Date().format("HH:mm:ss")}
 ⚠️ Status: *Failed to remove infrastructure*"""
