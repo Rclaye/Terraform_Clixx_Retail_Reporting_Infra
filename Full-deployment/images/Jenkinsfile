@@ -3,70 +3,68 @@ pipeline {
 
     environment {
         PATH = "${PATH}:${getTerraformPath()}"
+        TERRAFORM_DIR = "Full-deployment"
     }
-
+    
     stages {
-        stage('Approval to Launch Pipeline') {
+        stage('Initialize Parameters') {
             steps {
                 script {
-                    input(
-                        id: 'start_confirm',
-                        message: 'Ready to Launch the Pipeline?',
+                    def userInput = input(
+                        id: 'InitParams',
+                        message: 'Provide pipeline parameters',
                         parameters: [
-                            [$class: 'BooleanParameterDefinition', defaultValue: false, description: 'Start the Pipeline?', name: 'confirm']
+                            [$class: 'StringParameterDefinition',
+                             name: 'RUNNER',
+                             defaultValue: 'RCLAYE',
+                             description: 'Identify the runner'],
+                            [$class: 'ChoiceParameterDefinition',
+                             name: 'DEPLOY',
+                             choices: "Apply\nDestroy",
+                             description: 'Choose Apply or Destroy']
                         ]
                     )
+                    env.RUNNER = userInput['RUNNER']
+                    env.DEPLOY = userInput['DEPLOY']
                 }
-            }
-        }
-
-        stage('Terraform Format Check') {
-            steps {
-                slackSend(
-                    channel: '#stackjenkins',
-                    color: 'FFFF00_1',
-                    message: "Running 'terraform fmt -check' to ensure proper formatting."
-                )
-                sh "terraform fmt -check"
-            }
-        }
-
-        stage('Terraform Validate') {
-            steps {
-                slackSend(
-                    channel: '#stackjenkins',
-                    color: 'FFFF00_1',
-                    message: "Running 'terraform validate' to ensure configuration is valid."
-                )
-                sh "terraform validate"
             }
         }
 
         stage('Terraform Init') {
             steps {
-                withCredentials([file(credentialsId: 'clixx-tfvars', variable: 'TFVARS_FILE')]) {
-                    slackSend(
-                        channel: '#stackjenkins',
-                        color: 'FFFF00_1',
-                        message: "Terraform init started by ${env.RUNNER} on job ${env.JOB_NAME} [${env.BUILD_NUMBER}]."
-                    )
-                    sh """
-                        terraform init
-                    """
-                }
+                slackSend(
+                    channel: '#stackjenkins',
+                    color: '#3498DB',
+                    message: """TERRAFORM INIT
+Status: Started
+User: ${env.RUNNER}
+Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
+Time: ${new Date().format("HH:mm:ss")}
+URL: ${env.BUILD_URL}"""
+                )
+                sh """
+                    cd ${TERRAFORM_DIR}
+                    terraform init -migrate-state
+                """
             }
         }
 
         stage('Terraform Plan') {
             steps {
-                withCredentials([file(credentialsId: 'clixx-tfvars', variable: 'TFVARS_FILE')]) {
+                withCredentials([file(credentialsId: 'clixxx-tfvars', variable: 'TFVARS_FILE')]) {
                     slackSend(
                         channel: '#stackjenkins',
-                        color: 'FFFF00_1',
-                        message: "Terraform plan started by ${env.RUNNER} on job ${env.JOB_NAME} [${env.BUILD_NUMBER}]."
+                        color: '#F39C12',
+                        message: """TERRAFORM PLAN
+Status: Started
+User: ${env.RUNNER}
+Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
+Time: ${new Date().format("HH:mm:ss")}
+URL: ${env.BUILD_URL}"""
                     )
                     sh """
-                        terraform plan -var-file="$TFVARS_FILE" -out=tfplan -input=false
+                        cd ${TERRAFORM_DIR}
+                        terraform plan -var-file="\$TFVARS_FILE" -out=tfplan -input=false
                     """
                 }
             }
@@ -74,14 +72,20 @@ pipeline {
 
         stage('Terraform Apply') {
             steps {
-                withCredentials([file(credentialsId: 'clixx-tfvars', variable: 'TFVARS_FILE')]) {
+                withCredentials([file(credentialsId: 'clixxx-tfvars', variable: 'TFVARS_FILE')]) {
                     slackSend(
                         channel: '#stackjenkins',
-                        color: '36A64F_1',
-                        message: "Terraform apply started by ${env.RUNNER} on job ${env.JOB_NAME} [${env.BUILD_NUMBER}]."
+                        color: '#2ECC71',
+                        message: """TERRAFORM APPLY
+Status: Started
+User: ${env.RUNNER}
+Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
+Time: ${new Date().format("HH:mm:ss")}
+URL: ${env.BUILD_URL}"""
                     )
                     sh """
-                        terraform apply -var-file="$TFVARS_FILE" -input=false tfplan
+                        cd ${TERRAFORM_DIR}
+                        terraform apply -var-file="\$TFVARS_FILE" -input=false tfplan
                     """
                 }
             }
@@ -103,12 +107,23 @@ pipeline {
 
         stage('Terraform Destroy') {
             steps {
-                slackSend(
-                    channel: '#stackjenkins',
-                    color: 'FF0000_1',
-                    message: "Terraform destroy started on job ${env.JOB_NAME} [${env.BUILD_NUMBER}]."
-                )
-                sh "terraform destroy -auto-approve"
+                withCredentials([file(credentialsId: 'clixxx-tfvars', variable: 'TFVARS_FILE')]) {
+                    slackSend(
+                        channel: '#stackjenkins',
+                        color: '#E74C3C',
+                        message: """TERRAFORM DESTROY
+Status: Started
+User: ${env.RUNNER}
+Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
+Time: ${new Date().format("HH:mm:ss")}
+URL: ${env.BUILD_URL}
+WARNING: Removing Infrastructure"""
+                    )
+                    sh """
+                        cd ${TERRAFORM_DIR}
+                        terraform destroy -var-file="\$TFVARS_FILE" -auto-approve
+                    """
+                }
             }
         }
     }
@@ -117,16 +132,27 @@ pipeline {
         success {
             slackSend(
                 channel: '#stackjenkins',
-                color: 'good',
-                message: "Terraform deployment completed successfully. Job: ${env.JOB_NAME}, Build: #${env.BUILD_NUMBER}."
+                color: '#2ECC71',
+                message: """TERRAFORM SUCCESS
+User: ${env.RUNNER}
+Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
+Time: ${new Date().format("HH:mm:ss")}
+Status: Completed Successfully
+URL: ${env.BUILD_URL}"""
             )
             echo "Deployment successful."
         }
         failure {
             slackSend(
                 channel: '#stackjenkins',
-                color: 'danger',
-                message: "Terraform deployment failed. Job: ${env.JOB_NAME}, Build: #${env.BUILD_NUMBER}. Check logs for details."
+                color: '#E74C3C',
+                message: """TERRAFORM FAILURE
+User: ${env.RUNNER}
+Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
+Time: ${new Date().format("HH:mm:ss")}
+Status: Failed
+Check logs for details
+URL: ${env.BUILD_URL}"""
             )
             echo "Deployment failed. Check logs."
         }
@@ -135,14 +161,24 @@ pipeline {
                 if (currentBuild.currentResult == 'SUCCESS' && env.STAGE_NAME == 'Terraform Destroy') {
                     slackSend(
                         channel: '#stackjenkins',
-                        color: 'good',
-                        message: "Terraform destroy completed successfully. Job: ${env.JOB_NAME}, Build: #${env.BUILD_NUMBER}."
+                        color: '#9B59B6',
+                        message: """TERRAFORM DESTROY SUCCESS
+User: ${env.RUNNER}
+Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
+Time: ${new Date().format("HH:mm:ss")}
+Status: Infrastructure Removed
+URL: ${env.BUILD_URL}"""
                     )
                 } else if (currentBuild.currentResult == 'FAILURE' && env.STAGE_NAME == 'Terraform Destroy') {
                     slackSend(
                         channel: '#stackjenkins',
-                        color: 'danger',
-                        message: "Terraform destroy failed. Job: ${env.JOB_NAME}, Build: #${env.BUILD_NUMBER}."
+                        color: '#C0392B',
+                        message: """TERRAFORM DESTROY FAILED
+User: ${env.RUNNER}
+Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
+Time: ${new Date().format("HH:mm:ss")}
+Status: Failed to remove infrastructure
+URL: ${env.BUILD_URL}"""
                     )
                 }
             }
