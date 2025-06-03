@@ -1,0 +1,103 @@
+pipeline {
+    agent any
+
+    environment {
+        PATH = "${PATH}:${getTerraformPath()}"
+        AMI_ID="clixx-ami-${BUILD_NUMBER}"
+        VERSION = "1.0.${BUILD_NUMBER}"
+        TERRAFORM_DIR = "instances"
+        PACKER_DIR = "images"
+    }
+    
+    stages{
+         stage('Initial Stage') {
+              steps {
+                script {
+                def userInput = input(id: 'confirm', message: 'Start Pipeline?', parameters: [ [$class: 'BooleanParameterDefinition', defaultValue: false, description: 'Start Pipeline', name: 'confirm'] ])
+             }
+           }
+        }
+
+        stage('Packer AMI Build'){
+             steps {
+                 slackSend (color: '#FFFF01', message: "STARTING CLIXX PACKER IMAGE BUILD: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})")
+                 sh '''
+                 cd ${PACKER_DIR}
+                 sed -i "s/clixx-ami-[0-9]*/${AMI_ID}/" ./image.pkr.hcl 
+                 export PACKER_LOG=1
+                 export PACKER_LOG_PATH=$WORKSPACE/packer.log
+                 /usr/bin/packer plugin install github.com/hashicorp/amazon
+                 /usr/bin/packer build -force image.pkr.hcl 
+                 '''
+         }
+         }
+
+        stage('Terraform init'){
+             steps {
+                 slackSend (color: '#FFFF00', message: "STARTING CLIXX TERRAFORM DEPLOYMENT: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})")
+                 sh """
+                 cd ${TERRAFORM_DIR}
+                 terraform init -upgrade 
+                 """                  
+         }
+         }
+
+        stage('Terraform Plan'){
+             steps {
+                 sh """
+                 cd ${TERRAFORM_DIR}
+                 terraform plan -out=tfplan -input=false
+                 """                          
+         }
+         }
+
+        stage('Build Infrastructure and Deploy Application'){
+             steps {
+                 slackSend (color: '#FFFF00', message: "STARTING CLIXX INFRASTRUCTURE BUILD: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})")
+                 sh """
+                 cd ${TERRAFORM_DIR}
+                 terraform apply -auto-approve
+                 """                          
+         }
+         }
+
+        stage('Run Vulnerability Scan'){
+             steps {
+                 slackSend (color: '#FFFF00', message: "STARTING CLIXX VULNERABILITY SCAN: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})")
+                 sh """
+                 cd ${TERRAFORM_DIR}
+                 ASSESSMENT_TEMPLATE_ARN=\$(terraform output -raw assessment_template_arn)
+                 aws inspector start-assessment-run --assessment-run-name ClinxHardeningRun_${VERSION} --assessment-template-arn "\$ASSESSMENT_TEMPLATE_ARN" --region us-east-1
+                 """  
+                 slackSend (color: '#2ECC71', message: "COMPLETED CLIXX DEPLOYMENT: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]' (${env.BUILD_URL})")                        
+         }
+         }
+    }
+    
+    post {
+        success {
+            slackSend(
+                color: '#2ECC71',
+                message: """CLIXX DEPLOYMENT SUCCESS
+Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
+AMI: ${env.AMI_ID}
+Status: Completed Successfully
+URL: ${env.BUILD_URL}"""
+            )
+        }
+        failure {
+            slackSend(
+                color: '#E74C3C',
+                message: """CLIXX DEPLOYMENT FAILURE
+Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
+Status: Failed
+URL: ${env.BUILD_URL}"""
+            )
+        }
+    }
+}
+
+def getTerraformPath(){
+    def tfHome= tool name: 'terraform-14', type: 'terraform'
+    return tfHome
+}
