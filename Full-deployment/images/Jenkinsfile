@@ -89,6 +89,35 @@ URL: ${env.BUILD_URL}"""
                     """
                 }
             }
+            post {
+                success {
+                    slackSend(
+                        channel: '#stackjenkins',
+                        color: '#2ECC71',
+                        message: """TERRAFORM SUCCESS
+User: ${env.RUNNER}
+Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
+Time: ${new Date().format("HH:mm:ss")}
+Status: Completed Successfully
+URL: ${env.BUILD_URL}"""
+                    )
+                    echo "Deployment successful."
+                }
+                failure {
+                    slackSend(
+                        channel: '#stackjenkins',
+                        color: '#E74C3C',
+                        message: """TERRAFORM FAILURE
+User: ${env.RUNNER}
+Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
+Time: ${new Date().format("HH:mm:ss")}
+Status: Failed
+Check logs for details
+URL: ${env.BUILD_URL}"""
+                    )
+                    echo "Deployment failed. Check logs."
+                }
+            }
         }
 
         stage('Approval to Destroy Infrastructure') {
@@ -129,33 +158,6 @@ WARNING: Removing Infrastructure"""
     }
 
     post {
-        success {
-            slackSend(
-                channel: '#stackjenkins',
-                color: '#2ECC71',
-                message: """TERRAFORM SUCCESS
-User: ${env.RUNNER}
-Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
-Time: ${new Date().format("HH:mm:ss")}
-Status: Completed Successfully
-URL: ${env.BUILD_URL}"""
-            )
-            echo "Deployment successful."
-        }
-        failure {
-            slackSend(
-                channel: '#stackjenkins',
-                color: '#E74C3C',
-                message: """TERRAFORM FAILURE
-User: ${env.RUNNER}
-Job: ${env.JOB_NAME} [${env.BUILD_NUMBER}]
-Time: ${new Date().format("HH:mm:ss")}
-Status: Failed
-Check logs for details
-URL: ${env.BUILD_URL}"""
-            )
-            echo "Deployment failed. Check logs."
-        }
         always {
             script {
                 if (currentBuild.currentResult == 'SUCCESS' && env.STAGE_NAME == 'Terraform Destroy') {
