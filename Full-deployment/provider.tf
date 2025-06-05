@@ -13,6 +13,6 @@ provider "aws" {
 
   assume_role {
     role_arn     = "arn:aws:iam::${var.target_account_id}:role/${var.target_role_name}"
-    session_name = "TerraformSession"
+    session_name = "TerrJenkSession"
   }
 }

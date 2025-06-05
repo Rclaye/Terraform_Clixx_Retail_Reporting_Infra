@@ -1,6 +1,6 @@
 # This file verifies the SSL certificate exists before applying it to the load balancer
 
-# Use a data source to verify the certificate exists
+# Use a data source to verify the certificate exist
 data "aws_acm_certificate" "clixx_cert" {
   domain      = "*.stack-claye.com"
   statuses    = ["ISSUED"]
