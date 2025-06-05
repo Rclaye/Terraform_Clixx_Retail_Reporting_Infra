@@ -29,14 +29,96 @@ variable "availability_zones" {
   type        = list(string)
 }
 
+# Updated subnet CIDR variables to match 2-AZ requirements
 variable "public_subnet_cidrs" {
-  description = "CIDR blocks for public subnets"
+  description = "CIDR blocks for public subnets (450 hosts each)"
   type        = list(string)
+  default     = [
+    "10.0.0.0/23", "10.0.2.0/23"  # 512 IPs each - sufficient for 450+ hosts
+  ]
 }
 
-variable "private_subnet_cidrs" {
-  description = "CIDR blocks for private subnets"
+variable "private_app_subnet_cidrs" {
+  description = "CIDR blocks for private application subnets (250 hosts each)"
   type        = list(string)
+  default     = [
+    "10.0.6.0/24", "10.0.7.0/24"  # 256 IPs each - sufficient for 250+ hosts
+  ]
+}
+
+variable "private_db_subnet_cidrs" {
+  description = "CIDR blocks for private database subnets (680 hosts each)"
+  type        = list(string)
+  default     = [
+    "10.0.12.0/22", "10.0.16.0/22"  # 1024 IPs each - sufficient for 680+ hosts
+  ]
+}
+
+variable "private_oracle_subnet_cidrs" {
+  description = "CIDR blocks for private Oracle database subnets (254 hosts each)"
+  type        = list(string)
+  default     = [
+    "10.0.24.0/24", "10.0.25.0/24"  # 256 IPs each - sufficient for 254 hosts
+  ]
+}
+
+variable "private_java_app_subnet_cidrs" {
+  description = "CIDR blocks for private Java application subnets (50 hosts each)"
+  type        = list(string)
+  default     = [
+    "10.0.27.0/26", "10.0.27.64/26"  # 64 IPs each - sufficient for 50 hosts
+  ]
+}
+
+variable "private_java_db_subnet_cidrs" {
+  description = "CIDR blocks for private Java database subnets (50 hosts each)"
+  type        = list(string)
+  default     = [
+    "10.0.28.0/26", "10.0.28.64/26"  # 64 IPs each - sufficient for 50 hosts
+  ]
+}
+
+# Bastion Configuration Variables
+variable "bastion_instance_type" {
+  description = "EC2 instance type for the bastion host"
+  type        = string
+  default     = "t2.micro"
+}
+
+variable "bastion_ami_id" {
+  description = "AMI ID for the bastion host (defaults to ec2_ami if empty)"
+  type        = string
+  default     = ""
+}
+
+variable "bastion_key_name" {
+  description = "Key pair name for the bastion host"
+  type        = string
+  default     = "stack_devops_dev_kp"  # Default to same as ec2_key_name
+}
+
+variable "private_instance_ssh_key_destination_filename_on_bastion" {
+  description = "Filename for the private instance SSH key on the bastion host"
+  type        = string
+  default     = "myec2kp_priv.pem"  # Updated to match terraform.tfvars
+}
+
+variable "bastion_ssh_key_path" {
+  description = "Local path to the SSH private key for the bastion host"
+  type        = string
+  default     = "/Users/richardclaye/Downloads/CREDS/stack_devops_dev_kp.pem"
+}
+
+variable "private_instance_ssh_key_path" {
+  description = "Local path to the SSH private key for private instances (to be copied to bastion)"
+  type        = string
+  default     = "/Users/richardclaye/Downloads/CREDS/myec2kp_priv.pem"
+}
+
+variable "bastion_allowed_cidrs" {
+  description = "CIDR blocks allowed to connect to bastion via SSH"
+  type        = list(string)
+  default     = ["0.0.0.0/0"]  # Consider restricting for production
 }
 
 # Security variables
@@ -68,16 +150,10 @@ variable "db_instance_class" {
   type        = string
 }
 
-variable "db_availability_zone" {
-  description = "The availability zone where the RDS instance will be created"
-  type        = string
-  default     = "us-east-1a"
-}
-
 variable "db_snapshot_identifier" {
   description = "Snapshot identifier for RDS instance restoration"
   type        = string
-  default     = "arn:aws:rds:us-east-1:577701061234:snapshot:wordpressdbclixx-ecs-snapshot"
+  default     = ""  # Remove the hardcoded ARN to make it more configurable
 }
 
 # EC2 variables
@@ -86,22 +162,16 @@ variable "ec2_instance_type" {
   type        = string
 }
 
-variable "ec2_key_name" {
-  description = "Name of SSH key pair for bastion host"
-  type        = string
-  default     = "stack_devops_dev_kp"
-}
-
-variable "ec2_private_key_name" {
+variable "private_key_name" {
   description = "Name of SSH key pair for private EC2 instances"
   type        = string
   default     = "myec2kp_priv"
 }
 
-variable "ec2_key_path" {
-  description = "Path to the SSH key file for EC2 instances"
+variable "ec2_key_name" {
+  description = "Name of SSH key pair for EC2 instances (used for public instances)"
   type        = string
-  default     = "~/.ssh/stack_devops_dev_kp.pem" # Update with your actual key path
+  default     = "stack_devops_dev_kp"
 }
 
 variable "ec2_ami" {
@@ -136,9 +206,14 @@ variable "domain_name" {
 }
 
 variable "certificate_arn" {
-  description = "ARN of SSL certificate in ACM for HTTPS support (will be verified before use)"
+  description = "ARN of SSL certificate in ACM for HTTPS support"
   type        = string
-  default     = "arn:aws:acm:us-east-1:924305315126:certificate/359f0a6c-455b-4b1d-9b95-462ffd90a2b9"
+}
+
+variable "certificate_domain" {
+  description = "Domain name for the certificate to lookup (e.g., *.example.com)"
+  type        = string
+  default     = "*.stack-claye.com"
 }
 
 variable "hosted_zone_name" {
@@ -147,28 +222,28 @@ variable "hosted_zone_name" {
   default     = "stack-claye.com" # Updated to match the domain name
 }
 
-variable "hosted_zone_record_name" {
-  description = "Name of the record to create in the hosted zone"
-  type        = string
-  default     = "clixx" # Updated to match the record name
+variable "create_existing_record" {
+  description = "Whether to create a record for the root domain"
+  type        = bool
+  default     = false
 }
 
 variable "new_record" {
+  description = "New subdomain record to be created in Route 53"
   type        = string
-  description = "New record to be created in Route 53"
   default     = "clixx"
+}
+
+variable "hosted_zone_record_name" {
+  description = "Name of the record to create in the hosted zone"
+  type        = string
+  default     = "clixx.stack-claye.com" # Updated to match the record name
 }
 
 variable "create_dns_record" {
   description = "Whether to create a DNS record"
   type        = bool
   default     = true  # Updated default to true
-}
-
-variable "create_existing_record" {
-  description = "Whether to create a record for the root domain"
-  type        = bool
-  default     = false
 }
 
 # WordPress Admin variables
@@ -188,48 +263,4 @@ variable "wp_admin_email" {
   description = "WordPress admin email"
   type        = string
   sensitive   = true
-}
-
-# Bastion SSH key variables
-variable "bastion_ssh_identity_file_local_path" {
-  description = "Local path to the .pem file for SSHing into the bastion host"
-  type        = string
-  default     = "/Users/richardclaye/Downloads/CREDS/stack_devops_dev_kp.pem"
-}
-
-variable "private_instance_ssh_key_local_path" {
-  description = "Local path to the private instance's .pem file (to be copied to bastion)"
-  type        = string
-  default     = "/Users/richardclaye/Downloads/CREDS/myec2kp_priv.pem"
-}
-
-variable "private_instance_ssh_key_destination_filename" {
-  description = "Filename for the private instance's key once copied to the bastion"
-  type        = string
-  default     = "myec2kp_priv.pem"
-}
-
-# Debugging options
-variable "create_debug_instance" {
-  description = "Whether to create a debug instance in the private subnet"
-  type        = bool
-  default     = true
-}
-
-# EFS variable
-#variable "efs_id" {
-  #description = "ID of the EFS file system"
- # type        = string
-#}
-
-# Cross-account access variables
-variable "target_account_id" {
-  description = "The AWS Account ID to assume the role into"
-  type        = string
-}
-
-variable "target_role_name" {
-  description = "Name of the IAM role to assume in the target account"
-  type        = string
-  default     = "Engineer"
 }

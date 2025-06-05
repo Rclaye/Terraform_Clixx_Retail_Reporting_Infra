@@ -178,14 +178,53 @@ umount $${MOUNT_POINT} 2>/dev/null || true
 
 # Mount EFS
 mount -t nfs4 $${FILE_SYSTEM_ID}.efs.$${AWS_REGION}.amazonaws.com:/ $${MOUNT_POINT}
+
+# Replace with more robust mounting logic with retry mechanism
+mount -t nfs4 $${FILE_SYSTEM_ID}.efs.$${AWS_REGION}.amazonaws.com:/ $${MOUNT_POINT} || {
+  echo "Initial EFS mount attempt failed, waiting and trying again..."
+  
+  # Create a function for mount attempts with debugging
+  attempt_mount() {
+    echo "Checking network connectivity to EFS endpoint..."
+    ping -c 3 $${FILE_SYSTEM_ID}.efs.$${AWS_REGION}.amazonaws.com || echo "Cannot ping EFS endpoint - this is normal if ICMP is blocked"
+    
+    echo "Checking for port 2049 connectivity..."
+    nc -zv $${FILE_SYSTEM_ID}.efs.$${AWS_REGION}.amazonaws.com 2049 || echo "Port check failed"
+    
+    echo "Attempting EFS mount with verbose output..."
+    mount -v -t nfs4 $${FILE_SYSTEM_ID}.efs.$${AWS_REGION}.amazonaws.com:/ $${MOUNT_POINT}
+    return $?
+  }
+  
+  # Try several times with increasing delays
+  for retry in 1 2 3 4 5; do
+    echo "Mount attempt $retry..."
+    sleep $((retry * 10))
+    attempt_mount && {
+      echo "Mount successful on attempt $retry!"
+      break
+    }
+    
+    if [ $retry -eq 5 ]; then
+      echo "All mount attempts failed. Creating a local directory for application functionality..."
+      mkdir -p $${MOUNT_POINT}
+      chown -R apache:apache $${MOUNT_POINT} 2>/dev/null || true
+      echo "EFS mount failure - continuing with local storage. Check security groups, routes, and IAM permissions."
+    fi
+  done
+}
+
+# Update fstab more safely
 grep -v "$${FILE_SYSTEM_ID}" /etc/fstab > /etc/fstab.tmp 2>/dev/null || true
 mv /etc/fstab.tmp /etc/fstab 2>/dev/null || true
-echo "$${FILE_SYSTEM_ID}.efs.$${AWS_REGION}.amazonaws.com:/ $${MOUNT_POINT} nfs4 defaults 0 0" >> /etc/fstab
+echo "$${FILE_SYSTEM_ID}.efs.$${AWS_REGION}.amazonaws.com:/ $${MOUNT_POINT} nfs4 nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,noresvport 0 0" >> /etc/fstab
 
-# Verify mount
-df -h | grep -q "$${FILE_SYSTEM_ID}" || { echo "EFS mount failed"; exit 1; }
-sleep 3
-rm -rf $${MOUNT_POINT}/*
+# Improved verification
+if df -h | grep -q "$${FILE_SYSTEM_ID}"; then
+  echo "EFS mount successful!"
+else
+  echo "WARNING: EFS mount verification failed, but continuing the deployment using local storage"
+fi
 
 # Clone repository
 git clone https://github.com/stackitgit/CliXX_Retail_Repository.git /tmp/clixx_repo
@@ -219,6 +258,19 @@ if [ -f "$WP_CONFIG_PATH" ]; then
         sed -i "/\/\* That's all, stop editing! Happy publishing. \*\//i define('FORCE_SSL_ADMIN', true);\ndefine('FORCE_SSL_LOGIN', true);\nif (isset(\$_SERVER['HTTP_X_FORWARDED_PROTO']) \&\& \$_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {\n    \$_SERVER['HTTPS'] = 'on';\n}\n" "$WP_CONFIG_PATH"
     fi
 fi
+
+# Create health check file for ALB
+cat > $${MOUNT_POINT}/health.php << 'HEALTH'
+<?php
+// Simple health check file that returns 200 OK
+header("Content-Type: text/plain");
+echo "OK";
+?>
+HEALTH
+
+# Set ownership of the health check file
+chown apache:apache $${MOUNT_POINT}/health.php
+chmod 644 $${MOUNT_POINT}/health.php
 
 # Update WordPress URLs in database
 # Get private IP (for logging purposes only)

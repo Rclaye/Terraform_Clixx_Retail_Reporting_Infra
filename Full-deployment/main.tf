@@ -1,4 +1,4 @@
-# This file contains the main configuration for the AWS infrastructure deployment of the Clixx Application.
+# VPC 12 subnet infrastructure deployment of the Clixx Application.
 
 locals {
   custom_tags = {
@@ -6,6 +6,18 @@ locals {
     Stackteam   = "StackCloud13"
     CreatedBy   = "Terraform"
   }
+  
+  # Get all private subnet IDs for use in resources
+  all_private_subnets = concat(
+    aws_subnet.private_app[*].id,
+    aws_subnet.private_db[*].id,
+    aws_subnet.private_oracle[*].id,
+    aws_subnet.private_java_app[*].id,
+    aws_subnet.private_java_db[*].id
+  )
+
+  # Timestamp for snapshot naming to ensure uniqueness
+  timestamp = formatdate("YYYYMMDDhhmmss", timestamp())
 }
 
 # Security Groups for VPCs, EC2, EFS, RDS, and Load Balancer
@@ -45,7 +57,7 @@ resource "aws_security_group" "alb_sg" {
   depends_on = [aws_vpc.main]
 }
 
-# EC2 Security Group - allows HTTP/HTTPS from ALB, SSH from specific IPs
+# EC2 Security Group - allows HTTP/HTTPS from ALB, SSH from Bastion
 resource "aws_security_group" "ec2_sg" {
   name        = "clixx-ec2-sg"
   description = "Security group for EC2 instances"
@@ -67,23 +79,16 @@ resource "aws_security_group" "ec2_sg" {
     security_groups = [aws_security_group.alb_sg.id]
   }
 
+  # Updated: SSH access from bastion only
   ingress {
-    description = "SSH from Admin IPs"
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = var.admin_ips
+    description     = "SSH from Bastion"
+    from_port       = 22
+    to_port         = 22
+    protocol        = "tcp"
+    security_groups = [aws_security_group.bastion_sg.id]
   }
 
-  # HTTP from anywhere - needed for public instances
-  ingress {
-    description = "HTTP from anywhere"
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
+  # Remove direct reference to rds_sg in ec2_sg
   egress {
     from_port   = 0
     to_port     = 0
@@ -95,7 +100,7 @@ resource "aws_security_group" "ec2_sg" {
     Name = "clixx-ec2-sg"
   }, local.custom_tags)
 
-  depends_on = [aws_vpc.main, aws_security_group.alb_sg]
+  depends_on = [aws_vpc.main, aws_security_group.alb_sg, aws_security_group.bastion_sg]
 }
 
 # EFS Security Group - allows NFS from EC2 instances
@@ -119,6 +124,15 @@ resource "aws_security_group" "efs_sg" {
     protocol    = "tcp"
     cidr_blocks = [var.vpc_cidr]  # Allow from the entire VPC
   }
+  
+  # Add rule to allow NFS traffic from bastion hosts for troubleshooting
+  ingress {
+    description     = "NFS from Bastion hosts"
+    from_port       = 2049
+    to_port         = 2049
+    protocol        = "tcp"
+    security_groups = [aws_security_group.bastion_sg.id]
+  }
 
   egress {
     from_port   = 0
@@ -135,7 +149,7 @@ resource "aws_security_group" "efs_sg" {
   depends_on = [aws_vpc.main, aws_security_group.ec2_sg]
 }
 
-# RDS Security Group - allows MySQL/PostgreSQL from EC2 instances
+# RDS Security Group - allows MySQL/PostgreSQL from EC2 instances and bastion
 resource "aws_security_group" "rds_sg" {
   name        = "clixx-rds-sg"
   description = "Security group for RDS instances"
@@ -147,6 +161,15 @@ resource "aws_security_group" "rds_sg" {
     to_port         = 3306
     protocol        = "tcp"
     security_groups = [aws_security_group.ec2_sg.id]
+  }
+  
+  # Add MySQL access from bastion for management
+  ingress {
+    description     = "MySQL from Bastion Host"
+    from_port       = 3306
+    to_port         = 3306
+    protocol        = "tcp"
+    security_groups = [aws_security_group.bastion_sg.id]
   }
 
   egress {
@@ -163,11 +186,49 @@ resource "aws_security_group" "rds_sg" {
   depends_on = [aws_vpc.main, aws_security_group.ec2_sg]
 }
 
-# Database Subnet Group - required for RDS instance
+# Oracle DB Security Group
+resource "aws_security_group" "oracle_sg" {
+  name        = "clixx-oracle-sg"
+  description = "Security group for Oracle database instances"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description     = "Oracle DB from EC2 instances"
+    from_port       = 1521
+    to_port         = 1521
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ec2_sg.id]
+  }
+  
+  # Add Oracle access from bastion for management
+  ingress {
+    description     = "Oracle DB from Bastion Host"
+    from_port       = 1521
+    to_port         = 1521
+    protocol        = "tcp"
+    security_groups = [aws_security_group.bastion_sg.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge({
+    Name = "clixx-oracle-sg"
+  }, local.custom_tags)
+
+  depends_on = [aws_vpc.main, aws_security_group.ec2_sg, aws_security_group.bastion_sg]
+}
+
+# Update Database Subnet Group to use all DB subnets
 resource "aws_db_subnet_group" "clixx_db_subnet_group" {
   name        = "clixx-db-subnet-group"
   description = "Subnet group for Clixx RDS instance"
-  subnet_ids  = aws_subnet.private[*].id
+  # Use all available DB subnets
+  subnet_ids  = aws_subnet.private_db[*].id
 
   tags = merge(
     var.common_tags,
@@ -177,7 +238,25 @@ resource "aws_db_subnet_group" "clixx_db_subnet_group" {
     local.custom_tags
   )
 
-  depends_on = [aws_subnet.private]
+  depends_on = [aws_subnet.private_db]
+}
+
+# Create Java DB subnet group
+resource "aws_db_subnet_group" "java_db_subnet_group" {
+  name        = "java-db-subnet-group"
+  description = "Subnet group for Java DB instance"
+  # Use all available Java DB subnets
+  subnet_ids  = aws_subnet.private_java_db[*].id
+
+  tags = merge(
+    var.common_tags,
+    {
+      Name = "java-db-subnet-group"
+    },
+    local.custom_tags
+  )
+
+  depends_on = [aws_subnet.private_java_db]
 }
 
 # Create a MySQL parameter group to match the RDS snapshot engine version
@@ -195,10 +274,10 @@ resource "aws_db_parameter_group" "mysql80" {
   )
 }
 
-# Create a copy of the snapshot
+# Create a copy of the source RDS snapshot
 resource "aws_db_snapshot_copy" "clixx_snapshot_copy" {
   source_db_snapshot_identifier = var.db_snapshot_identifier
-  target_db_snapshot_identifier = "clixx-snapshot-copy-${formatdate("YYYYMMDD-hhmmss", timestamp())}"
+  target_db_snapshot_identifier = "clixx-snapshot-copy-${local.timestamp}"
   
   tags = merge(
     var.common_tags,
@@ -207,31 +286,25 @@ resource "aws_db_snapshot_copy" "clixx_snapshot_copy" {
     },
     local.custom_tags
   )
+
+  # No direct dependencies needed here, but good practice to ensure parameter group exists
+  depends_on = [aws_db_parameter_group.mysql80]
 }
 
-# RDS Instance - restored from the copied snapshot
+# RDS Instance - restored from copied snapshot
 resource "aws_db_instance" "clixx_db" {
   identifier             = "clixx-db-instance"
   instance_class         = var.db_instance_class
-  snapshot_identifier    = aws_db_snapshot_copy.clixx_snapshot_copy.id  # Use the copied snapshot
+  snapshot_identifier    = aws_db_snapshot_copy.clixx_snapshot_copy.id
   vpc_security_group_ids = [aws_security_group.rds_sg.id]
   db_subnet_group_name   = aws_db_subnet_group.clixx_db_subnet_group.name
-  availability_zone      = var.db_availability_zone
-  
-  # When restoring from a snapshot, these settings are determined by the snapshot
-  # and don't need to be specified
-  allocated_storage      = null
-  engine                 = null
-  engine_version         = null
-  username               = null
-  password               = null
-  
-  # Other settings - explicitly disable Multi-AZ
-  multi_az               = false
+  multi_az               = true  # Use variable instead of hardcoded value
   publicly_accessible    = false
-  skip_final_snapshot    = true
+  skip_final_snapshot    = true  # Use variable instead of hardcoded value
   storage_encrypted      = true
-  apply_immediately      = true
+  apply_immediately      = true  # Use variable instead of hardcoded value
+
+  # Disable automatic minor version upgrades to prevent "Upgrading" status
   auto_minor_version_upgrade = false
   
   # Disable automatic backups
@@ -239,7 +312,7 @@ resource "aws_db_instance" "clixx_db" {
   backup_window           = null
   maintenance_window      = "Mon:00:00-Mon:03:00"
   
-  # Use our MySQL 8.0 parameter group
+  # Use our MySQL 8.0 parameter group instead of MySQL 5.7
   parameter_group_name = aws_db_parameter_group.mysql80.name
   
   tags = merge(
@@ -253,12 +326,15 @@ resource "aws_db_instance" "clixx_db" {
   lifecycle {
     ignore_changes = [
       snapshot_identifier,
-      allocated_storage,
-      engine,
-      engine_version,
-      username,
-      password,
+      engine_version,   # Ignore engine version changes during auto minor upgrades
+      backup_retention_period,
+      backup_window,
+      maintenance_window
     ]
+    
+    # Set prevent_destroy based on environment
+    # Comment this out when you need to destroy resources for testing
+    # prevent_destroy = true
   }
 
   depends_on = [
@@ -268,7 +344,7 @@ resource "aws_db_instance" "clixx_db" {
   ]
 }
 
-# REFERENCE THE ROUTE 53 ZONE
+# Fetch the existing hosted zone for DNS record creation
 data "aws_route53_zone" "clixx_zone" {
   name = var.domain_name
 }
@@ -359,13 +435,13 @@ resource "aws_ssm_parameter" "hosted_zone_id" {
 resource "aws_ssm_parameter" "wp_admin_user" {
   name  = "/clixx/wp_admin_user"
   type  = "String"
-  value = var.db_user
+  value = var.wp_admin_user
 }
 
 resource "aws_ssm_parameter" "wp_admin_password" {
   name      = "/clixx/wp_admin_password"
   type      = "SecureString"
-  value     = var.db_password
+  value     = var.wp_admin_password
   overwrite = true
 }
 
@@ -377,7 +453,7 @@ resource "aws_ssm_parameter" "wp_admin_email" {
 
 # IAM Policy for EC2 instance to access Secrets Manager and other AWS resources
 resource "aws_iam_policy" "clixx_deploy_policy" {
-  name        = "terraformclixx_Policy"  # Changed name to avoid conflict
+  name        = "terraformclixx_Policy"  
   description = "Policy for Clixx application deployment"
   policy = jsonencode({
     Version = "2012-10-17"
@@ -397,10 +473,21 @@ resource "aws_iam_policy" "clixx_deploy_policy" {
           "efs:DescribeFileSystems",
           "efs:ClientMount",
           "efs:ClientWrite",
+          # Add these additional EFS permissions
+          "efs:DescribeMountTargets",
+          "efs:DescribeMountTargetSecurityGroups",
+          "efs:DescribeAccessPoints",
+          "efs:CreateAccessPoint",
+          "efs:DeleteAccessPoint",
+          "efs:PutBackupPolicy",
           "ec2:DescribeInstances",
           "ec2:DescribeAddresses",
           "ec2:DescribeNetworkInterfaces",
-          "ec2:DescribeVolumes"
+          "ec2:DescribeVolumes",
+          "ec2:DescribeSecurityGroups", # Add permission to describe security groups
+          "ec2:DescribeSubnets",        # Add permission to describe subnets
+          "ec2:DescribeVpcAttribute",   # Add permission to describe VPC attributes
+          "ec2:DescribeRouteTables"     # Add permission to describe route tables
         ]
         Resource = "*"
       },
@@ -473,7 +560,7 @@ resource "aws_lb_target_group" "clixx_tg" {
   health_check {
     enabled             = true
     interval            = 30
-    path                = "/"  # Changed from /health.php to root path
+    path                = "/health.php"  # Changed from /health.php to root path
     port                = "traffic-port"
     healthy_threshold   = 2
     unhealthy_threshold = 10    # Increased to be more lenient
@@ -495,7 +582,7 @@ resource "aws_lb_target_group" "clixx_tg" {
   depends_on = [aws_vpc.main]
 }
 
-# Create the Application Load Balancer
+# Create the Application Load Balancer - Update to use all available public subnets
 resource "aws_lb" "clixx_alb" {
   name               = "clixx-alb"
   internal           = false
@@ -519,6 +606,7 @@ resource "aws_lb" "clixx_alb" {
   ]
 }
 
+
 # HTTP Listener - forwards to target group instead of redirecting to HTTPS
 resource "aws_lb_listener" "clixx_http" {
   load_balancer_arn = aws_lb.clixx_alb.arn
@@ -533,13 +621,13 @@ resource "aws_lb_listener" "clixx_http" {
   depends_on = [aws_lb.clixx_alb, aws_lb_target_group.clixx_tg]
 }
 
-# HTTPS Listener - using the verified certificate ARN
+# HTTPS Listener - using the imported certificate ARN from acm_verification.tf
 resource "aws_lb_listener" "clixx_https" {
   load_balancer_arn = aws_lb.clixx_alb.arn
   port              = 443
   protocol          = "HTTPS"
   ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"  # Updated to TLS 1.3 and 1.2 policy
-  certificate_arn   = local.certificate_arn
+  certificate_arn   = local.certificate_arn  # Use the local value from acm_verification.tf
   
   default_action {
     type             = "forward"
@@ -555,7 +643,7 @@ resource "aws_launch_template" "clixx_app" {
   description = "Launch template for Clixx retail application"
   image_id      = var.ec2_ami
   instance_type = var.ec2_instance_type
-  key_name      = var.ec2_private_key_name  # Use the private key for private instances
+  key_name      = var.private_key_name  # Using private_key_name from vars.tf
 
   # Enable detailed monitoring for faster metric collection
   monitoring {
@@ -566,6 +654,7 @@ resource "aws_launch_template" "clixx_app" {
   iam_instance_profile {
     name = aws_iam_instance_profile.clixx_instance_profile.name
   }
+  
   # Root volume configuration
   block_device_mappings {
     device_name = "/dev/xvda"
@@ -641,7 +730,7 @@ resource "aws_launch_template" "clixx_app" {
   # User data template - ensure it's correctly implementing the health check endpoint
   user_data = base64encode(templatefile("${path.module}/user_data_fixed.sh.tpl", {
     AWS_REGION                         = var.aws_region
-    MOUNT_POINT                        = "/var/www/html"  # Add this line
+    MOUNT_POINT                        = "/var/www/html"  
     SSM_PARAM_DB_NAME                  = "/clixx/db_name"
     SSM_PARAM_DB_USER                  = "/clixx/db_user"
     SSM_PARAM_DB_PASSWORD              = "/clixx/db_password"
@@ -655,9 +744,9 @@ resource "aws_launch_template" "clixx_app" {
     SSM_PARAM_WP_ADMIN_PASSWORD        = "/clixx/wp_admin_password"
     SSM_PARAM_WP_ADMIN_EMAIL           = "/clixx/wp_admin_email"
   }))
-  # Add a network interface to force a public IP
+  # Fix network interface configuration - don't force public IPs for private instances
   network_interfaces {
-    associate_public_ip_address = false  # Changed to false for private instances
+    associate_public_ip_address = false  # Changed to false for private subnet deployment
     security_groups             = [aws_security_group.ec2_sg.id]
     delete_on_termination       = true
   }
@@ -670,24 +759,41 @@ resource "aws_launch_template" "clixx_app" {
     local.custom_tags
   )
 
+  # Comprehensive dependencies
   depends_on = [
     aws_db_instance.clixx_db,
     aws_iam_instance_profile.clixx_instance_profile,
     aws_lb.clixx_alb,
     aws_efs_file_system.clixx_efs,
     aws_efs_mount_target.clixx_mount_target,
+    aws_security_group.ec2_sg,
+    aws_ssm_parameter.db_name,
+    aws_ssm_parameter.db_user,
+    aws_ssm_parameter.db_password,
+    aws_ssm_parameter.rds_endpoint,
+    aws_ssm_parameter.efs_id,
+    aws_ssm_parameter.lb_dns,
+    aws_ssm_parameter.hosted_zone_name,
+    aws_ssm_parameter.hosted_zone_record,
+    aws_ssm_parameter.hosted_zone_id,
+    aws_ssm_parameter.wp_admin_user,
+    aws_ssm_parameter.wp_admin_password,
+    aws_ssm_parameter.wp_admin_email
   ]
 }
 
-# Auto Scaling Group Configuration
+# Auto Scaling Group Configuration - update name and add zone tag
 resource "aws_autoscaling_group" "clixx_asg" {
-  name                      = "clixx-asg"
-  min_size                  = 1
-  max_size                  = 3
-  desired_capacity          = 1
+  name                      = "clixx-asg-primary"  # Updated name to clarify it's the primary ASG
+  min_size                  = var.min_size
+  max_size                  = var.max_size
+  desired_capacity          = var.desired_capacity
   health_check_grace_period = 300
   health_check_type         = "EC2"
-  vpc_zone_identifier       = aws_subnet.private[*].id  # Changed to private subnets
+  
+  # Pin this ASG to ONLY use the private app subnet in the first AZ
+  vpc_zone_identifier       = [aws_subnet.private_app[0].id]  # Use only the first AZ's subnet
+  
   target_group_arns         = [aws_lb_target_group.clixx_tg.arn]
   
   # Configure instance warmup
@@ -701,7 +807,8 @@ resource "aws_autoscaling_group" "clixx_asg" {
     for_each = merge(
       var.common_tags,
       {
-        Name = "clixx-asg-instance"
+        Name = "clixx-asg-primary-instance"  # Updated instance name
+        AZ   = var.availability_zones[0]     # Tag with the primary AZ
       },
       local.custom_tags
     )
@@ -712,70 +819,18 @@ resource "aws_autoscaling_group" "clixx_asg" {
     }
   }
 
+  # Improve dependencies
   depends_on = [
     aws_launch_template.clixx_app,
-    aws_lb_target_group.clixx_tg
+    aws_lb_target_group.clixx_tg,
+    aws_subnet.private_app,
+    aws_route_table_association.private_app_rta
   ]
-}
-
-# Simple scaling policy - CPU based scaling
-resource "aws_autoscaling_policy" "scale_out" {
-  name                   = "clixx-scale-out"
-  scaling_adjustment     = 1
-  adjustment_type        = "ChangeInCapacity"
-  cooldown               = 300
-  autoscaling_group_name = aws_autoscaling_group.clixx_asg.name
-
-  depends_on = [aws_autoscaling_group.clixx_asg]
-}
-
-resource "aws_autoscaling_policy" "scale_in" {
-  name                   = "clixx-scale-in"
-  scaling_adjustment     = -1
-  adjustment_type        = "ChangeInCapacity"
-  cooldown               = 300
-  autoscaling_group_name = aws_autoscaling_group.clixx_asg.name
-
-  depends_on = [aws_autoscaling_group.clixx_asg]
-}
-
-# CloudWatch Alarms for scaling
-resource "aws_cloudwatch_metric_alarm" "cpu_high" {
-  alarm_name          = "clixx-cpu-high"
-  comparison_operator = "GreaterThanOrEqualToThreshold"
-  evaluation_periods  = 2
-  metric_name         = "CPUUtilization"
-  namespace           = "AWS/EC2"
-  period              = 120
-  statistic           = "Average"
-  threshold           = 80
-  alarm_description   = "Scale out if CPU utilization is above 80% for 4 minutes"
-  alarm_actions       = [aws_autoscaling_policy.scale_out.arn]
-
-  dimensions = {
-    AutoScalingGroupName = aws_autoscaling_group.clixx_asg.name
+  
+  # Lifecycle to ignore changes to desired capacity that might be made by AWS auto scaling
+  lifecycle {
+    ignore_changes = [desired_capacity]
   }
-
-  depends_on = [aws_autoscaling_policy.scale_out]
-}
-
-resource "aws_cloudwatch_metric_alarm" "cpu_low" {
-  alarm_name          = "clixx-cpu-low"
-  comparison_operator = "LessThanOrEqualToThreshold"
-  evaluation_periods  = 2
-  metric_name         = "CPUUtilization"
-  namespace           = "AWS/EC2"
-  period              = 120
-  statistic           = "Average"
-  threshold           = 20
-  alarm_description   = "Scale in if CPU utilization is below 20% for 4 minutes"
-  alarm_actions       = [aws_autoscaling_policy.scale_in.arn]
-
-  dimensions = {
-    AutoScalingGroupName = aws_autoscaling_group.clixx_asg.name
-  }
-
-  depends_on = [aws_autoscaling_policy.scale_in]
 }
 
 # EFS Configuration - Create a new EFS file system
@@ -810,7 +865,7 @@ resource "aws_efs_access_point" "clixx_access_point" {
   }
   
   root_directory {
-    path = "/var/www/html"
+    path = "/var/www/html" # Path for WordPress files
     creation_info {
       owner_gid   = 48
       owner_uid   = 48
@@ -823,20 +878,26 @@ resource "aws_efs_access_point" "clixx_access_point" {
   }, local.custom_tags, var.common_tags)
 }
 
-# Create/Manage EFS mount targets - ONE PER AZ, using PUBLIC subnets only
+# Create/Manage EFS mount targets - ONE PER AZ, using PRIVATE subnets only
 resource "aws_efs_mount_target" "clixx_mount_target" {
-  # Use only public subnets for mount targets - one per AZ
+  # Use application subnets for mount targets - one per AZ
   for_each = {
-    for i, subnet in aws_subnet.public : i => subnet
+    for i, subnet in aws_subnet.private_app : i => subnet
+    if i < length(var.availability_zones)  # Limit to available AZs
   }
   
   file_system_id  = aws_efs_file_system.clixx_efs.id
   subnet_id       = each.value.id
   security_groups = [aws_security_group.efs_sg.id]
 
+  # Ensure mount targets are created after network configuration is complete
   depends_on = [
-    aws_subnet.public,
+    aws_subnet.private_app,
     aws_security_group.efs_sg,
-    aws_efs_file_system.clixx_efs
+    aws_efs_file_system.clixx_efs,
+    aws_route_table_association.private_app_rta,
+    aws_vpc.main,
+    aws_internet_gateway.igw,
+    aws_nat_gateway.nat_gw
   ]
 }
