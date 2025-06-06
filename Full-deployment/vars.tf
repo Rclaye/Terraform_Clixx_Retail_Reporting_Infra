@@ -219,7 +219,7 @@ variable "certificate_domain" {
 variable "hosted_zone_name" {
   description = "Name of the Route 53 hosted zone"
   type        = string
-  default     = "stack-claye.com" # Updated to match the domain name
+  default     = "stack-claye.com" 
 }
 
 variable "create_existing_record" {
@@ -237,7 +237,7 @@ variable "new_record" {
 variable "hosted_zone_record_name" {
   description = "Name of the record to create in the hosted zone"
   type        = string
-  default     = "clixx.stack-claye.com" # Updated to match the record name
+  default     = "clixx.stack-claye.com"
 }
 
 variable "create_dns_record" {

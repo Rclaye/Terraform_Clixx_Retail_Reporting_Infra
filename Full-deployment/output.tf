@@ -198,7 +198,7 @@ output "availability_zones_used" {
 # Connect via bastion
 output "connect_private_via_bastion" {
   description = "Command template to connect to private instances through the bastion"
-  value       = "ssh -J ec2-user@${aws_instance.bastion.public_dns} ec2-user@PRIVATE_INSTANCE_IP"
+  value       = "ssh -i ec2-user@${aws_instance.bastion.public_dns} ec2-user@PRIVATE_INSTANCE_IP"
 }
 
 # Add networking specific outputs

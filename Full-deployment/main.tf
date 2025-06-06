@@ -298,11 +298,11 @@ resource "aws_db_instance" "clixx_db" {
   snapshot_identifier    = aws_db_snapshot_copy.clixx_snapshot_copy.id
   vpc_security_group_ids = [aws_security_group.rds_sg.id]
   db_subnet_group_name   = aws_db_subnet_group.clixx_db_subnet_group.name
-  multi_az               = true  # Use variable instead of hardcoded value
+  multi_az               = true  
   publicly_accessible    = false
-  skip_final_snapshot    = true  # Use variable instead of hardcoded value
+  skip_final_snapshot    = true  
   storage_encrypted      = true
-  apply_immediately      = true  # Use variable instead of hardcoded value
+  apply_immediately      = true  
 
   # Disable automatic minor version upgrades to prevent "Upgrading" status
   auto_minor_version_upgrade = false
@@ -473,7 +473,6 @@ resource "aws_iam_policy" "clixx_deploy_policy" {
           "efs:DescribeFileSystems",
           "efs:ClientMount",
           "efs:ClientWrite",
-          # Add these additional EFS permissions
           "efs:DescribeMountTargets",
           "efs:DescribeMountTargetSecurityGroups",
           "efs:DescribeAccessPoints",
@@ -544,7 +543,7 @@ resource "aws_iam_role_policy_attachment" "clixx_role_policy_attach" {
 
 # Create instance profile
 resource "aws_iam_instance_profile" "clixx_instance_profile" {
-  name = "terr-DeployProfile-rc"  # Also update this to be consistent
+  name = "terr-DeployProfile-rc"  
   role = aws_iam_role.clixx_deploy_role.name
 }
 
@@ -552,15 +551,15 @@ resource "aws_iam_instance_profile" "clixx_instance_profile" {
 # Create target group for the load balancer
 resource "aws_lb_target_group" "clixx_tg" {
   name     = "clixx-target-group"
-  port     = 80                  # keep listening on port 80
-  protocol = "HTTP"              # protocol remains HTTP
+  port     = 80                  
+  protocol = "HTTP"              
   vpc_id   = aws_vpc.main.id
 
   # Improved health check settings for WordPress
   health_check {
     enabled             = true
     interval            = 30
-    path                = "/health.php"  # Changed from /health.php to root path
+    path                = "/health.php"  
     port                = "traffic-port"
     healthy_threshold   = 2
     unhealthy_threshold = 10    # Increased to be more lenient
@@ -582,7 +581,7 @@ resource "aws_lb_target_group" "clixx_tg" {
   depends_on = [aws_vpc.main]
 }
 
-# Create the Application Load Balancer - Update to use all available public subnets
+# Create the Application Load Balancer 
 resource "aws_lb" "clixx_alb" {
   name               = "clixx-alb"
   internal           = false
@@ -607,7 +606,7 @@ resource "aws_lb" "clixx_alb" {
 }
 
 
-# HTTP Listener - forwards to target group instead of redirecting to HTTPS
+# HTTP Listener - forwards traffic to the target group
 resource "aws_lb_listener" "clixx_http" {
   load_balancer_arn = aws_lb.clixx_alb.arn
   port              = 80
@@ -626,7 +625,7 @@ resource "aws_lb_listener" "clixx_https" {
   load_balancer_arn = aws_lb.clixx_alb.arn
   port              = 443
   protocol          = "HTTPS"
-  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"  # Updated to TLS 1.3 and 1.2 policy
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"  
   certificate_arn   = local.certificate_arn  # Use the local value from acm_verification.tf
   
   default_action {

@@ -1,5 +1,4 @@
 # Secondary Auto Scaling Group configured to run in the second availability zone
-# This provides high availability for the application layer
 
 # Launch Template for secondary ASG instances 
 resource "aws_launch_template" "clixx_app_secondary" {
