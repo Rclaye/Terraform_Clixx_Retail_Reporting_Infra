@@ -21,7 +21,6 @@ locals {
 }
 
 # Security Groups for VPCs, EC2, EFS, RDS, and Load Balancer
-# ALB Security Group - allows inbound HTTP/HTTPS from anywhere
 resource "aws_security_group" "alb_sg" {
   name        = "clixx-alb-sg"
   description = "Security group for Application Load Balancer"

@@ -1,6 +1,4 @@
 # Bastion Host Configuration
-# This implements the bastion host with key transfer functionality from the entire-vpc-spc module
-
 # IAM Role and Policy for Bastion Host with SSM Access
 resource "aws_iam_role" "bastion_role" {
   name = "clixx-bastion-role"
