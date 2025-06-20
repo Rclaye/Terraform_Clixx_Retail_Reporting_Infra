@@ -77,7 +77,7 @@ resource "aws_iam_instance_profile" "oracle_instance_profile" {
 
 # Oracle EC2 instance
 resource "aws_instance" "oracle_db_instance" {
-  count                  = 1  # Set to 0 for now
+  count                  = 0  # Set to 0 for now
   ami                    = "ami-0e58b56aa4d64231b"  # Amazon Linux 2 AMI
   instance_type          = "t2.large"              # Increase based on Oracle requirements
   subnet_id              = length(aws_subnet.private_oracle) > 0 ? aws_subnet.private_oracle[0].id : null
