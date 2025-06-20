@@ -77,8 +77,8 @@ resource "aws_iam_instance_profile" "oracle_instance_profile" {
 
 # Oracle EC2 instance
 resource "aws_instance" "oracle_db_instance" {
-  count                  = 0  # Set to 0 since you don't need the actual instance yet
-  ami                    = "ami-0554aa6767e249943"  # Amazon Linux 2 AMI, replace with Oracle Linux if preferred
+  count                  = 1  # Set to 0 for now
+  ami                    = "ami-0e58b56aa4d64231b"  # Amazon Linux 2 AMI
   instance_type          = "t2.large"              # Increase based on Oracle requirements
   subnet_id              = length(aws_subnet.private_oracle) > 0 ? aws_subnet.private_oracle[0].id : null
   vpc_security_group_ids = [aws_security_group.oracle_instance_sg.id]
